@@ -25,6 +25,11 @@ class RateLimiter:
 _limiter = RateLimiter()
 
 
+def reset() -> None:
+    """Drop all buckets (used by tests)."""
+    _limiter._buckets.clear()
+
+
 def client_ip(request: Request) -> str:
     fwd = request.headers.get("x-forwarded-for")
     if fwd:

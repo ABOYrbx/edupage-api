@@ -1,0 +1,36 @@
+services:
+  app:
+    build: .
+    image: edupage-api:latest
+    container_name: edupage-api
+    restart: unless-stopped
+    # Optional: copy backend/.env.example to .env and fill it in.
+    # Without a .env the container still starts and prints a one-time admin password.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Container layout. Leave DATABASE_URL unset to use the volume below;
+      # set it here (or in .env) to point somewhere else, e.g. Postgres.
+      DATABASE_URL: ${DATABASE_URL:-sqlite+aiosqlite:////app/data/edupage-api.db}
+      DATA_DIR: /app/data
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    ports:
+      - "${PORT:-8787}:8787"
+    volumes:
+      # The vault key is written here on first start. Back this directory up:
+      # without credential.key the stored EduPage passwords cannot be decrypted.
+      - ./data:/app/data
+
+  # Optional: Postgres instead of SQLite.
+  # db:
+  #   image: postgres:16-alpine
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_DB: edupage_api
+  #     POSTGRES_USER: edupage
+  #     POSTGRES_PASSWORD: change-me
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+  # volumes:
+  #   pgdata:

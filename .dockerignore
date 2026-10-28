@@ -1,0 +1,27 @@
+# Never ship secrets, local data or build artefacts into the image.
+.git
+.gitignore
+**/.env
+**/.env.*
+!**/.env.example
+data/
+**/data/
+**/*.db
+**/*.db-*
+**/*.sqlite*
+**/*.key
+**/*.pem
+**/*.secret
+**/*.token
+backend/.venv/
+backend/tests/
+backend/.pytest_cache/
+backend/.ruff_cache/
+**/__pycache__/
+**/*.pyc
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+**/*.tsbuildinfo
+docs/
+*.log

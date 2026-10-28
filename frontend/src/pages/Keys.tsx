@@ -1,108 +1,281 @@
-import { useEffect, useState } from "react";
-import { api, fmtDate } from "../lib/api";
+import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { api, copy, fmtDate, fmtDay } from "../lib/api";
+import { Alert, Badge, Empty, Spinner } from "../components/ui";
+import type { Account } from "./Accounts";
 
-type Key = { id: string; name: string; prefix: string; created_at: string; expires_at: string; revoked_at: string | null; last_used_at: string | null; can_write: boolean; active: boolean };
-type Account = { id: string; alias: string | null; username: string; subdomain: string };
+export type ApiKey = {
+  id: string;
+  account_id: string;
+  name: string;
+  prefix: string;
+  created_at: string;
+  expires_at: string;
+  revoked_at: string | null;
+  last_used_at: string | null;
+  can_write: boolean;
+  status: string;
+  key?: string;
+};
+
+const DAY_CHOICES = [7, 30, 90, 365];
 
 export default function Keys() {
+  const [params, setParams] = useSearchParams();
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [selected, setSelected] = useState<string>("");
-  const [keys, setKeys] = useState<Key[]>([]);
-  const [newKey, setNewKey] = useState<any>(null);
-  const [form, setForm] = useState({ name: "", expires_in_days: 30, can_write: false });
-  const [err, setErr] = useState("");
+  const [selected, setSelected] = useState(params.get("account") || "");
+  const [keys, setKeys] = useState<ApiKey[] | null>(null);
+  const [created, setCreated] = useState<ApiKey | null>(null);
+  const [name, setName] = useState("");
+  const [days, setDays] = useState(30);
+  const [canWrite, setCanWrite] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    api<{ items: Account[] }>("/admin/accounts").then((r) => {
-      setAccounts(r.items);
-      if (r.items.length) setSelected(r.items[0].id);
-    }).catch((e) => setErr(e.message));
+    api<{ items: Account[] }>("/admin/accounts")
+      .then((res) => {
+        setAccounts(res.items);
+        setSelected((current) => current || res.items[0]?.id || "");
+      })
+      .catch((err) => setError((err as Error).message));
+  }, []);
+
+  const load = useCallback(async (accountId: string) => {
+    if (!accountId) {
+      setKeys([]);
+      return;
+    }
+    try {
+      const res = await api<{ items: ApiKey[] }>(`/admin/keys?account=${accountId}`);
+      setKeys(res.items);
+    } catch (err) {
+      setError((err as Error).message);
+      setKeys([]);
+    }
   }, []);
 
   useEffect(() => {
-    if (!selected) return;
-    api<{ items: Key[] }>(`/admin/keys?account=${selected}`).then((r) => setKeys(r.items)).catch((e) => setErr(e.message));
-  }, [selected]);
+    void load(selected);
+  }, [selected, load]);
 
-  async function create(e: React.FormEvent) {
-    e.preventDefault();
-    setErr("");
+  function pick(accountId: string) {
+    setSelected(accountId);
+    setParams(accountId ? { account: accountId } : {});
+  }
+
+  async function create(event: React.FormEvent) {
+    event.preventDefault();
+    setError("");
+    setNotice("");
+    setBusy(true);
     try {
-      const r = await api("/admin/keys", { method: "POST", body: JSON.stringify({ account_id: selected, ...form }) });
-      setNewKey(r);
-      const rr = await api<{ items: Key[] }>(`/admin/keys?account=${selected}`);
-      setKeys(rr.items);
-    } catch (e: any) { setErr(e.message); }
+      const res = await api<ApiKey>("/admin/keys", {
+        method: "POST",
+        body: JSON.stringify({ account_id: selected, name, expires_in_days: days, can_write: canWrite }),
+      });
+      setCreated(res);
+      setName("");
+      await load(selected);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
   }
 
-  async function revoke(id: string) {
-    if (!confirm("Key widerrufen?")) return;
-    await api(`/admin/keys/${id}/revoke`, { method: "POST" });
-    const rr = await api<{ items: Key[] }>(`/admin/keys?account=${selected}`);
-    setKeys(rr.items);
+  async function revoke(key: ApiKey) {
+    if (!confirm(`Key „${key.name}“ widerrufen? Agenten damit verlieren sofort den Zugriff.`)) return;
+    setError("");
+    try {
+      await api(`/admin/keys/${key.id}/revoke`, { method: "POST" });
+      await load(selected);
+    } catch (err) {
+      setError((err as Error).message);
+    }
   }
 
-  async function rotate(id: string) {
-    const r: any = await api(`/admin/keys/${id}/rotate`, { method: "POST" });
-    setNewKey(r);
-    const rr = await api<{ items: Key[] }>(`/admin/keys?account=${selected}`);
-    setKeys(rr.items);
+  async function rotate(key: ApiKey) {
+    if (!confirm(`Key „${key.name}“ rotieren? Der bisherige Key wird sofort ungültig.`)) return;
+    setError("");
+    try {
+      const res = await api<ApiKey>(`/admin/keys/${key.id}/rotate`, { method: "POST" });
+      setCreated(res);
+      await load(selected);
+    } catch (err) {
+      setError((err as Error).message);
+    }
   }
+
+  const account = accounts.find((item) => item.id === selected);
 
   return (
-    <div className="max-w-5xl mx-auto p-6 space-y-4">
-      <h1 className="text-2xl font-bold">API-Keys</h1>
-      {err && <p className="text-red-600 text-sm">{err}</p>}
-
-      <div className="flex items-center gap-3">
-        <label className="text-sm">Konto:</label>
-        <select className="border rounded px-3 py-2" value={selected} onChange={(e) => setSelected(e.target.value)}>
-          {accounts.map((a) => <option key={a.id} value={a.id}>{a.alias || a.username} ({a.subdomain})</option>)}
-        </select>
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">API-Keys</h1>
+        <p className="text-sm text-slate-500">
+          Ein Key pro Agent. Er wird genau einmal angezeigt – danach nur noch als Prefix.
+        </p>
       </div>
 
-      {newKey && (
-        <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 space-y-2">
-          <p className="font-semibold">Neuer Key (nur einmal sichtbar!):</p>
-          <code className="block bg-white p-2 rounded break-all">{newKey.key}</code>
-          <button onClick={() => { navigator.clipboard.writeText(newKey.key); }} className="text-blue-600 text-sm">Kopieren</button>
-          <button onClick={() => setNewKey(null)} className="ml-3 text-gray-600 text-sm">Schließen</button>
-        </div>
+      <Alert>{error}</Alert>
+      <Alert kind="success">{notice}</Alert>
+
+      {accounts.length === 0 ? (
+        <div className="card p-6 text-sm text-slate-500">Lege zuerst ein EduPage-Konto an.</div>
+      ) : (
+        <>
+          <div className="card flex flex-wrap items-center gap-3 p-4">
+            <label className="label mb-0" htmlFor="account">
+              Konto
+            </label>
+            <select id="account" className="input max-w-xs" value={selected} onChange={(e) => pick(e.target.value)}>
+              {accounts.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.alias || item.username} ({item.subdomain})
+                </option>
+              ))}
+            </select>
+            {account && <span className="text-xs text-slate-500">{account.username}</span>}
+          </div>
+
+          {created && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+              <p className="font-semibold text-amber-900">Neuer Key – jetzt kopieren!</p>
+              <p className="mt-1 text-sm text-amber-800">
+                Dieser Wert wird nie wieder angezeigt. Geht er verloren, rotiere den Key.
+              </p>
+              <code className="mt-3 block select-all break-all rounded-lg bg-white p-3 font-mono text-sm">
+                {created.key}
+              </code>
+              <pre className="mt-3 overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100">
+{`curl -H "Authorization: Bearer ${created.key}" \\\n  ${window.location.origin}/api/v1/messages?limit=5`}
+              </pre>
+              <div className="mt-3 flex gap-2">
+                <button
+                  className="btn-primary"
+                  onClick={() =>
+                    copy(created.key!)
+                      .then(() => setNotice("Key in die Zwischenablage kopiert."))
+                      .catch(() => setNotice("Kopieren nicht möglich – bitte manuell markieren."))
+                  }
+                >
+                  Kopieren
+                </button>
+                <button className="btn-secondary" onClick={() => setCreated(null)}>
+                  Als gespeichert markieren
+                </button>
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={create} className="card grid gap-3 p-6 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <h2 className="font-semibold">Neuen Key erstellen</h2>
+            </div>
+            <div>
+              <label className="label" htmlFor="key-name">
+                Name
+              </label>
+              <input
+                id="key-name"
+                className="input"
+                placeholder="z. B. Claude Desktop"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                maxLength={80}
+                required
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="key-days">
+                Gültig für
+              </label>
+              <div className="flex gap-2">
+                <select
+                  id="key-days"
+                  className="input"
+                  value={days}
+                  onChange={(e) => setDays(Number(e.target.value))}
+                >
+                  {DAY_CHOICES.map((choice) => (
+                    <option key={choice} value={choice}>
+                      {choice} Tage
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  className="input w-24"
+                  min={1}
+                  max={3650}
+                  value={days}
+                  onChange={(e) => setDays(Number(e.target.value))}
+                  aria-label="Tage"
+                />
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm sm:col-span-2">
+              <input type="checkbox" checked={canWrite} onChange={(e) => setCanWrite(e.target.checked)} />
+              Schreibzugriff erlauben (Nachrichten senden, Hausaufgaben abhaken)
+            </label>
+            <div className="sm:col-span-2">
+              <button className="btn-primary" disabled={busy || !name.trim() || !selected}>
+                {busy ? "Erstelle …" : "Key erstellen"}
+              </button>
+            </div>
+          </form>
+
+          <div className="card overflow-x-auto">
+            {keys === null ? (
+              <Spinner />
+            ) : (
+              <table className="w-full min-w-[700px]">
+                <thead className="border-b border-slate-200 bg-slate-50">
+                  <tr>
+                    <th className="th">Name</th>
+                    <th className="th">Prefix</th>
+                    <th className="th">Zugriff</th>
+                    <th className="th">Läuft ab</th>
+                    <th className="th">Zuletzt benutzt</th>
+                    <th className="th">Status</th>
+                    <th className="th" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {keys.map((key) => (
+                    <tr key={key.id}>
+                      <td className="td font-medium">{key.name}</td>
+                      <td className="td font-mono text-xs text-slate-600">{key.prefix}…</td>
+                      <td className="td text-slate-600">{key.can_write ? "lesen + schreiben" : "nur lesen"}</td>
+                      <td className="td text-slate-600">
+                        <div>{fmtDate(key.expires_at)}</div>
+                        {key.status === "active" && <div className="text-xs text-slate-400">{fmtDay(key.expires_at)}</div>}
+                      </td>
+                      <td className="td text-slate-600">{fmtDate(key.last_used_at)}</td>
+                      <td className="td">
+                        <Badge value={key.status} />
+                      </td>
+                      <td className="td">
+                        <div className="flex justify-end gap-1">
+                          <button className="btn-secondary" onClick={() => rotate(key)} disabled={key.status === "revoked"}>
+                            Rotieren
+                          </button>
+                          <button className="btn-danger" onClick={() => revoke(key)} disabled={key.status === "revoked"}>
+                            Widerrufen
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {keys.length === 0 && <Empty colSpan={7}>Für dieses Konto gibt es noch keine Keys.</Empty>}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </>
       )}
-
-      <form onSubmit={create} className="bg-white shadow rounded-xl p-6 space-y-3">
-        <h2 className="font-semibold">Neuen Key erstellen</h2>
-        <input className="border rounded px-3 py-2 w-full" placeholder="Name (z. B. Claude)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-        <div className="flex gap-3">
-          <input type="number" className="border rounded px-3 py-2 w-32" value={form.expires_in_days} onChange={(e) => setForm({ ...form, expires_in_days: Number(e.target.value) })} />
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.can_write} onChange={(e) => setForm({ ...form, can_write: e.target.checked })} /> Schreibzugriff</label>
-        </div>
-        <button className="bg-blue-600 text-white rounded px-4 py-2">Erstellen</button>
-      </form>
-
-      <div className="bg-white shadow rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-100">
-            <tr><th className="text-left p-3">Name</th><th className="text-left p-3">Prefix</th><th className="text-left p-3">Ablauf</th><th className="text-left p-3">Zuletzt</th><th className="text-left p-3">Status</th><th className="p-3"></th></tr>
-          </thead>
-          <tbody>
-            {keys.map((k) => (
-              <tr key={k.id} className="border-t">
-                <td className="p-3">{k.name}</td>
-                <td className="p-3 font-mono text-xs">{k.prefix}</td>
-                <td className="p-3">{fmtDate(k.expires_at)}</td>
-                <td className="p-3">{fmtDate(k.last_used_at)}</td>
-                <td className="p-3">{k.active ? (k.can_write ? "read+write" : "read") : "inaktiv"}</td>
-                <td className="p-3 space-x-2">
-                  <button onClick={() => revoke(k.id)} className="text-red-600">Widerrufen</button>
-                  <button onClick={() => rotate(k.id)} className="text-blue-600">Rotieren</button>
-                </td>
-              </tr>
-            ))}
-            {keys.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-gray-500">Keine Keys</td></tr>}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 }

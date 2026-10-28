@@ -1,72 +1,66 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...db import get_db
-from ...services.account import AccountService
 from ...api.deps import get_current_admin
 from ...core.errors import api_error
-from ...core.rate_limit import admin_login_guard
+from ...db import get_db
+from ...services.account import AccountService
+from ...services.keys import KeyService
 
 router = APIRouter(prefix="/admin/accounts", tags=["admin-accounts"])
 
 
 @router.get("")
 async def list_accounts(db: AsyncSession = Depends(get_db), _=Depends(get_current_admin)):
-    svc = AccountService(db)
-    items = await svc.list_accounts()
-    return {"items": [svc._account_dict(a) for a in items], "total": len(items)}
+    items = await AccountService(db).list_accounts()
+    return {"items": items, "total": len(items), "limit": len(items), "offset": 0}
 
 
 @router.post("")
 async def add_account(payload: dict, db: AsyncSession = Depends(get_db), _=Depends(get_current_admin)):
-    svc = AccountService(db)
-    alias = payload.get("alias")
-    subdomain = payload.get("subdomain", "login1")
-    username = payload.get("username", "")
-    password = payload.get("password", "")
-    if not username or not password:
-        raise api_error("VALIDATION", "Benutzername und Passwort erforderlich.")
-    return await svc.add(alias, subdomain, username, password)
+    return await AccountService(db).add(
+        alias=payload.get("alias"),
+        subdomain=payload.get("subdomain") or "login1",
+        username=payload.get("username") or "",
+        password=payload.get("password") or "",
+    )
 
 
 @router.post("/2fa")
 async def finish_2fa(payload: dict, db: AsyncSession = Depends(get_db), _=Depends(get_current_admin)):
-    svc = AccountService(db)
-    pt = payload.get("pending_token")
+    pending = payload.get("pending_token")
     code = payload.get("code")
-    if not pt or not code:
-        raise api_error("VALIDATION")
-    return await svc.finish_2fa(pt, code)
+    if not pending or not code:
+        raise api_error("VALIDATION", "pending_token und code erforderlich.")
+    return await AccountService(db).finish_2fa(pending, code)
 
 
 @router.get("/{account_id}")
 async def get_account(account_id: str, db: AsyncSession = Depends(get_db), _=Depends(get_current_admin)):
-    svc = AccountService(db)
-    a = await svc.get(account_id)
-    if not a:
+    service = AccountService(db)
+    account = await service.get(account_id)
+    if account is None:
         raise api_error("NOT_FOUND")
-    return svc._account_dict(a)
+    data = await service.list_accounts()
+    match = next((item for item in data if item["id"] == account_id), None)
+    if match is None:
+        raise api_error("NOT_FOUND")
+    return {**match, "keys": await KeyService(db).list_for_account(account_id)}
 
 
 @router.delete("/{account_id}")
 async def delete_account(account_id: str, db: AsyncSession = Depends(get_db), _=Depends(get_current_admin)):
-    svc = AccountService(db)
-    a = await svc.get(account_id)
-    if not a:
-        raise api_error("NOT_FOUND")
-    await svc.delete(account_id)
+    await AccountService(db).delete(account_id)
     return {"status": "ok"}
 
 
 @router.post("/{account_id}/test")
 async def test_account(account_id: str, db: AsyncSession = Depends(get_db), _=Depends(get_current_admin)):
-    svc = AccountService(db)
-    return await svc.test_account(account_id)
+    return await AccountService(db).test_account(account_id)
 
 
 @router.post("/{account_id}/refresh")
 async def refresh_account(account_id: str, db: AsyncSession = Depends(get_db), _=Depends(get_current_admin)):
-    svc = AccountService(db)
-    return await svc.refresh(account_id)
+    return await AccountService(db).refresh(account_id)

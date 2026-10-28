@@ -1,31 +1,68 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
+import { Alert } from "../components/ui";
 
 export default function Login() {
-  const [pw, setPw] = useState("");
-  const [user, setUser] = useState("admin");
-  const [err, setErr] = useState("");
+  const [username, setUsername] = useState("admin");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const nav = useNavigate();
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setErr("");
+  const location = useLocation();
+  const target = (location.state as { from?: string } | null)?.from || "/accounts";
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setError("");
+    setBusy(true);
     try {
-      await api("/admin/login", { method: "POST", body: JSON.stringify({ username: user, password: pw }) });
-      nav("/accounts");
-    } catch (e: any) {
-      setErr(e.message);
+      await api("/admin/login", { method: "POST", body: JSON.stringify({ username, password }) });
+      nav(target, { replace: true });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
     }
   }
+
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <form onSubmit={submit} className="bg-white shadow rounded-xl p-8 w-full max-w-sm space-y-4">
-        <h1 className="text-2xl font-bold">edupage-api</h1>
-        <p className="text-sm text-gray-500">Admin-Login</p>
-        <input className="input w-full border rounded px-3 py-2" placeholder="Benutzername" value={user} onChange={(e) => setUser(e.target.value)} />
-        <input className="input w-full border rounded px-3 py-2" type="password" placeholder="Passwort" value={pw} onChange={(e) => setPw(e.target.value)} />
-        {err && <p className="text-red-600 text-sm">{err}</p>}
-        <button className="w-full bg-blue-600 text-white rounded py-2 font-medium">Anmelden</button>
+    <div className="flex min-h-screen items-center justify-center px-4">
+      <form onSubmit={submit} className="card w-full max-w-sm space-y-4 p-8">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">edupage-api</h1>
+          <p className="mt-1 text-sm text-slate-500">Anmeldung für die Verwaltung</p>
+        </div>
+        <div>
+          <label className="label" htmlFor="username">
+            Benutzername
+          </label>
+          <input
+            id="username"
+            className="input"
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="label" htmlFor="password">
+            Passwort
+          </label>
+          <input
+            id="password"
+            className="input"
+            type="password"
+            autoComplete="current-password"
+            autoFocus
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </div>
+        <Alert>{error}</Alert>
+        <button className="btn-primary w-full" disabled={busy}>
+          {busy ? "Anmelden …" : "Anmelden"}
+        </button>
       </form>
     </div>
   );

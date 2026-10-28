@@ -13,6 +13,10 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite+aiosqlite:///./data/edupage-api.db"
     credential_encryption_key: str = ""
+    # File the key is read from when CREDENTIAL_ENCRYPTION_KEY is empty. The Docker
+    # entrypoint persists the generated key here so every process (including
+    # `docker compose exec`) sees the same one.
+    credential_encryption_key_file: Path | None = None
     admin_username: str = "admin"
     admin_password: str = ""
     host: str = "0.0.0.0"
@@ -20,6 +24,12 @@ class Settings(BaseSettings):
     cors_origins: str = ""
     admin_login_limit: str = "20/10minute"
     agent_limit: str = "120/minute"
+
+    # Optional: enables /wetter and /wetter/suche for agents.
+    openweather_api_key: str = ""
+
+    # Set to true when the service runs behind HTTPS (Secure cookies).
+    cookie_secure: bool = False
 
     cache_ttl_messages: int = 900
     cache_ttl_grades: int = 3600
@@ -29,11 +39,20 @@ class Settings(BaseSettings):
 
     data_dir: Path = Field(default=Path("./data"))
 
+    # Where the built SPA lives. Empty = <repo>/frontend/dist (sibling of backend/).
+    frontend_dist: Path | None = None
+
     def cors_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     def encryption_key_bytes(self) -> bytes:
         raw = self.credential_encryption_key.strip()
+        if not raw and self.credential_encryption_key_file is not None:
+            # Docker: the entrypoint wrote the key to disk on first start.
+            try:
+                raw = self.credential_encryption_key_file.read_text().strip()
+            except OSError:
+                raw = ""
         if not raw:
             # Auto-generate on first run; persisted only if caller writes it.
             raw = secrets.token_hex(32)

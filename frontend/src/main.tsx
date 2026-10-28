@@ -1,11 +1,12 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import "./index.css";
-import Login from "./pages/Login";
+import Layout from "./components/Layout";
 import Accounts from "./pages/Accounts";
-import Keys from "./pages/Keys";
 import Activity from "./pages/Activity";
+import Keys from "./pages/Keys";
+import Login from "./pages/Login";
 import Settings from "./pages/Settings";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -13,12 +14,15 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="/" element={<Navigate to="/accounts" replace />} />
-        <Route path="/accounts" element={<Accounts />} />
-        <Route path="/keys" element={<Keys />} />
-        <Route path="/activity" element={<Activity />} />
-        <Route path="/settings" element={<Settings />} />
+        <Route element={<Layout />}>
+          <Route path="/" element={<Navigate to="/accounts" replace />} />
+          <Route path="/accounts" element={<Accounts />} />
+          <Route path="/keys" element={<Keys />} />
+          <Route path="/activity" element={<Activity />} />
+          <Route path="/settings" element={<Settings />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/accounts" replace />} />
       </Routes>
     </BrowserRouter>
-  </React.StrictMode>
+  </React.StrictMode>,
 );

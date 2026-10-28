@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import AdminSession, AdminUser
 from ..config import get_settings
+from ..core.time import utcnow
 
 
 def hash_token(tok: str) -> str:
@@ -16,24 +17,27 @@ def hash_token(tok: str) -> str:
 
 
 async def ensure_admin(db: AsyncSession) -> AdminUser:
+    """Create the single admin on first start; the env password is used only then."""
     s = get_settings()
     res = await db.execute(select(AdminUser).where(AdminUser.username == s.admin_username))
     user = res.scalar_one_or_none()
-    if user is None:
-        from argon2 import PasswordHasher
+    if user is not None:
+        return user
 
-        ph = PasswordHasher()
-        pw = s.admin_password or secrets.token_urlsafe(16)
-        if not s.admin_password:
-            s.admin_password = pw
-        user = AdminUser(username=s.admin_username, password_hash=ph.hash(pw))
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-        # Print one-time password to stdout (only if auto-generated)
-        if not s.admin_password or s.admin_password == pw:
-            pass
-        print(f"[edupage-api] Admin user '{user.username}' created. Password: {pw if not (s.admin_password and s.admin_password != pw) else '(from env)'}")
+    from argon2 import PasswordHasher
+
+    ph = PasswordHasher()
+    password = s.admin_password or secrets.token_urlsafe(16)
+    user = AdminUser(username=s.admin_username, password_hash=ph.hash(password))
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    if not s.admin_password:
+        # Only an auto-generated password is ever echoed, and only once.
+        print(
+            f"[edupage-api] Admin '{user.username}' angelegt. Einmalpasswort: {password}\n"
+            "[edupage-api] Setze ADMIN_PASSWORD in der .env oder nutze 'python -m app.cli reset-admin'."
+        )
     return user
 
 
@@ -60,10 +64,10 @@ async def login(db: AsyncSession, username: str, password: str) -> tuple[str, st
         token_hash=hash_token(token),
         username=user.username,
         csrf_token=csrf,
-        expires_at=datetime.utcnow() + timedelta(hours=8),
+        expires_at=utcnow() + timedelta(hours=8),
     )
     db.add(sess)
-    user.last_login_at = datetime.utcnow()
+    user.last_login_at = utcnow()
     await db.commit()
     return token, csrf
 
@@ -71,7 +75,7 @@ async def login(db: AsyncSession, username: str, password: str) -> tuple[str, st
 async def authenticate(db: AsyncSession, raw_token: str) -> AdminSession | None:
     res = await db.execute(select(AdminSession).where(AdminSession.token_hash == hash_token(raw_token)))
     sess = res.scalar_one_or_none()
-    if not sess or sess.revoked_at is not None or sess.expires_at <= datetime.utcnow():
+    if not sess or sess.revoked_at is not None or sess.expires_at <= utcnow():
         return None
     return sess
 
@@ -80,5 +84,5 @@ async def revoke(db: AsyncSession, raw_token: str) -> None:
     res = await db.execute(select(AdminSession).where(AdminSession.token_hash == hash_token(raw_token)))
     sess = res.scalar_one_or_none()
     if sess and sess.revoked_at is None:
-        sess.revoked_at = datetime.utcnow()
+        sess.revoked_at = utcnow()
         await db.commit()

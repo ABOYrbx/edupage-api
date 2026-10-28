@@ -1,44 +1,108 @@
-# Secrets / env
+# ---------------------------------------------------------------------------
+# Geheimnisse. Nichts davon darf je ins Repository.
+# ---------------------------------------------------------------------------
+
+# .env-Dateien in jedem Verzeichnis, Vorlagen bleiben erlaubt.
 .env
 .env.*
 !.env.example
+
+# Schlüssel und Zertifikate
 *.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
 *.secret
-.cache/
+*.token
+*.pass
+id_rsa*
+id_ed25519*
+id_ecdsa*
+
+# Weitere Zugangsdaten
+.npmrc
+.netrc
+.pgpass
+.htpasswd
+credentials.json
+credentials*.json
+client_secret*.json
+service-account*.json
+secrets/
+secrets.*
+
+# Lokale Anwendungsdaten: Datenbank, Vault-Key, Downloads.
+# Ohne data/credential.key sind gespeicherte EduPage-Passwörter verloren —
+# deshalb gehört dieses Verzeichnis ins Backup, aber niemals ins Repo.
 data/
 *.db
 *.db-*
 *.sqlite
 *.sqlite3
+*.sqlite-*
+*.dump
+*.sql.gz
+backups/
 
+# ---------------------------------------------------------------------------
 # Python
+# ---------------------------------------------------------------------------
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*.so
 .venv/
 venv/
+env/
+.python-version
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
+.coverage.*
 htmlcov/
-dist/
 build/
+dist/
 *.egg-info/
+pip-wheel-metadata/
 
-# Node / frontend
+# ---------------------------------------------------------------------------
+# Node / Frontend
+# ---------------------------------------------------------------------------
 node_modules/
 frontend/dist/
 frontend/.vite/
+.vite/
 *.tsbuildinfo
 
-# OS / editor
+# ---------------------------------------------------------------------------
+# Logs und Laufzeitdateien
+# ---------------------------------------------------------------------------
+*.log
+logs/
+log/
+*.pid
+*.seed
+tmp/
+temp/
+
+# ---------------------------------------------------------------------------
+# Editor / Betriebssystem
+# ---------------------------------------------------------------------------
 .DS_Store
+Thumbs.db
 *.swp
+*.swo
+*~
 .idea/
 .vscode/
+.direnv/
+.envrc
 
-# Logs
-*.log
-backend/.venv/
-frontend/node_modules/
+# ---------------------------------------------------------------------------
+# Lokale Überschreibungen (nicht Teil des Projekts)
+# ---------------------------------------------------------------------------
+docker-compose.override.yml
+*.local
+*.bak
