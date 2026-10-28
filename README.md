@@ -1,46 +1,46 @@
 # edupage-api
 
-Standalone Multi-Account-Gateway für EduPage — eine Web-UI verwaltet mehrere EduPage-Konten,
-jedes Konto bekommt benannte API-Keys, die du an KI-Agenten (Claude, OpenClaw, …) gibst.
-Die Agenten lesen damit Nachrichten, Anhänge, Hausaufgaben, Stundenplan, Noten, Speiseplan und
-Termine — nur für das Konto, dessen Key sie haben.
+A standalone multi-account gateway for EduPage. A web UI manages several EduPage accounts, and
+each account gets named API keys that you hand to AI agents (Claude, OpenClaw, …).
+Through those keys agents can read messages, attachments, homework, timetables, grades, lunch
+menus and school events — only for the account whose key they hold.
 
-Ein Prozess, ein Port, eine SQLite-Datei. Kein Node-Server in Produktion, kein externer Dienst.
+One process, one port, one SQLite file. No Node server in production, no external service.
 
 ## Quickstart
 
 ```bash
-./scripts/install.sh      # venv, Abhängigkeiten, .env mit Admin-Passwort + Vault-Key
-./scripts/run.sh          # Dev: Backend :8787 + Frontend :5173
+./scripts/install.sh      # venv, dependencies, .env with admin password + vault key
+./scripts/run.sh          # dev: backend :8787 + frontend :5173
 ```
 
-Dashboard: <http://127.0.0.1:5173> — Anmeldung als `admin` mit dem Passwort aus `backend/.env`.
+Dashboard: <http://127.0.0.1:5173> — sign in as `admin` with the password from `backend/.env`.
 
-Produktiv (FastAPI liefert API und Frontend auf einem Port):
+Production (FastAPI serves both API and frontend on one port):
 
 ```bash
 cd frontend && npm ci && npm run build && cd ..
 ./scripts/run.sh prod     # http://127.0.0.1:8787
 ```
 
-Mit Docker:
+With Docker:
 
 ```bash
-cp backend/.env.example .env           # optional; ADMIN_PASSWORD empfohlen
+cp backend/.env.example .env           # optional; ADMIN_PASSWORD recommended
 docker compose up -d --build
-docker compose logs app | grep Einmalpasswort   # nur ohne ADMIN_PASSWORD
+docker compose logs app | grep Einmalpasswort   # only without ADMIN_PASSWORD
 ```
 
-Der Container legt beim ersten Start `data/credential.key` an und behält ihn über Neustarts —
-**dieses Verzeichnis sichern**, sonst sind die gespeicherten EduPage-Passwörter verloren.
+On first start the container creates `data/credential.key` and keeps it across restarts —
+**back this directory up**, otherwise the stored EduPage passwords are lost.
 
-## In drei Schritten zum Agenten-Zugriff
+## Agent access in three steps
 
-1. **Konto hinzufügen** — Dashboard → Konten → Subdomain (`login1`, `gyk`, …), Benutzername und
-   Passwort. Bei aktivierter Zwei-Faktor-Anmeldung fragt das Dashboard direkt nach dem Code.
-2. **Key erstellen** — Dashboard → API-Keys → Konto, Name, Gültigkeit, optional Schreibzugriff.
-   Der vollständige Key wird **genau einmal** angezeigt.
-3. **Agent nutzen**:
+1. **Add an account** — Dashboard → Accounts → subdomain (`login1`, `gyk`, …), username and
+   password. If two-factor authentication is enabled, the dashboard asks for the code right away.
+2. **Create a key** — Dashboard → API Keys → account, name, expiry, optionally write access.
+   The full key is shown **exactly once**.
+3. **Use it from an agent**:
 
 ```bash
 curl -H "Authorization: Bearer epk_..." http://127.0.0.1:8787/api/v1/homework?status=offen
@@ -52,31 +52,33 @@ curl -H "Authorization: Bearer epk_..." http://127.0.0.1:8787/api/v1/timetable/w
 curl -H "Authorization: Bearer epk_..." http://127.0.0.1:8787/api/v1/grades
 ```
 
-## Sicherheit im Kurzüberblick
+## Security at a glance
 
-- EduPage-Passwörter liegen AES-256-GCM-verschlüsselt in der Datenbank und werden nie ausgeliefert.
-- API-Keys werden nur als SHA-256-Hash gespeichert; angezeigt wird der Klartext einmalig.
-- Admin-Login: Argon2id, Sitzung als httpOnly-Cookie (8 h) mit CSRF-Double-Submit, Rate-Limit.
-- Agenten-Keys sind standardmäßig **nur lesend**; Schreiben muss pro Key freigegeben werden.
-- Rate-Limit pro Key, kurze Download-Tokens (5 Min) für Anhänge statt langlebiger Links.
+- EduPage passwords are stored AES-256-GCM encrypted in the database and never returned by the API.
+- API keys are stored as SHA-256 hashes only; the plaintext is displayed once.
+- Admin login: Argon2id, session as an httpOnly cookie (8 h) with CSRF double-submit, rate limited.
+- Agent keys are **read-only** by default; write access must be granted per key.
+- Per-key rate limiting, short-lived download tokens (5 min) for attachments instead of long-lived links.
 
-## Dokumentation
+## Documentation
 
-| Datei | Inhalt |
+The docs are currently written in German.
+
+| File | Contents |
 | --- | --- |
-| [`docs/API.md`](docs/API.md) | Agent-API: Endpunkte, Formate, Fehlercodes, Beispiele |
-| [`docs/ADMIN.md`](docs/ADMIN.md) | Dashboard: Konten, Keys, Aktivität, Passwort-Reset |
-| [`docs/DEPLOY.md`](docs/DEPLOY.md) | Docker, Reverse Proxy, HTTPS, Migrationen, Backup |
+| [`docs/API.md`](docs/API.md) | Agent API: endpoints, formats, error codes, examples |
+| [`docs/ADMIN.md`](docs/ADMIN.md) | Dashboard: accounts, keys, activity, password reset |
+| [`docs/DEPLOY.md`](docs/DEPLOY.md) | Docker, reverse proxy, HTTPS, migrations, backup |
 
-Interaktive API-Doku läuft mit: <http://127.0.0.1:8787/docs> · OpenAPI: `/api/v1/openapi.json`.
+Interactive API docs ship with the app: <http://127.0.0.1:8787/docs> · OpenAPI: `/api/v1/openapi.json`.
 
-## Entwicklung
+## Development
 
 ```bash
-cd backend && .venv/bin/python -m pytest -q     # offline, Fake-EduPage-Provider
+cd backend && .venv/bin/python -m pytest -q     # offline, fake EduPage provider
 cd frontend && npm run typecheck && npm run build
 ```
 
-Hinweise für Agenten stehen in [`AGENTS.md`](AGENTS.md). Das Backend nutzt die
-[`edupage-api`](https://github.com/EdupageAPI/edupage-api)-Bibliothek (GPL-3.0) für das
-EduPage-Protokoll; dieses Projekt ist für den privaten Gebrauch gedacht.
+Agent-oriented notes live in [`AGENTS.md`](AGENTS.md). The backend uses the
+[`edupage-api`](https://github.com/EdupageAPI/edupage-api) library (GPL-3.0) for the EduPage
+protocol; this project is intended for personal use.
