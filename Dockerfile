@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1
 
 # ---- frontend build -------------------------------------------------------
-FROM node:20-alpine AS web
+# The web build is architecture-independent; build it once on the runner
+# instead of emulating Node for every target platform.
+FROM --platform=$BUILDPLATFORM node:20-alpine AS web
 WORKDIR /web
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci

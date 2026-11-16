@@ -1,0 +1,140 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  IMAGE: ghcr.io/aboyrbx/edupage-api
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    name: Build and publish image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+            type=raw,value=latest
+
+      - name: Build and push (amd64 + arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+  smoke:
+    name: Smoke test image
+    needs: image
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Start image and check /health
+        env:
+          IMAGE: ghcr.io/aboyrbx/edupage-api:${{ needs.image.outputs.version }}
+        run: |
+          set -eu
+          docker pull "$IMAGE"
+          docker run -d --name edupage-api-smoke \
+            -p 8787:8787 \
+            -e ADMIN_PASSWORD=smoke-test \
+            "$IMAGE"
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8787/api/v1/health; then
+              echo
+              docker rm -f edupage-api-smoke
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Health check failed after 60 seconds" >&2
+          docker logs edupage-api-smoke
+          docker rm -f edupage-api-smoke
+          exit 1
+
+  release:
+    name: Publish GitHub release
+    needs: [image, smoke]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          append_body: true
+          body: |
+            ## Docker image
+
+            Multi-arch image for `linux/amd64` and `linux/arm64`:
+
+            ```bash
+            docker pull ${{ env.IMAGE }}:${{ needs.image.outputs.version }}
+            ```
+
+            Start it with a persistent data volume:
+
+            ```bash
+            docker run -d --name edupage-api \
+              -p 8787:8787 \
+              -e ADMIN_PASSWORD='change-me' \
+              -v edupage-api-data:/app/data \
+              ${{ env.IMAGE }}:${{ needs.image.outputs.version }}
+            ```
+
+            Dashboard: <http://localhost:8787>
+
+            The volume stores the SQLite database and `credential.key`. Back it up:
+            without that key, saved EduPage passwords cannot be decrypted.
+
+            `latest` points to the newest release.

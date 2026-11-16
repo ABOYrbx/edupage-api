@@ -23,6 +23,25 @@ cd frontend && npm ci && npm run build && cd ..
 ./scripts/run.sh prod     # http://127.0.0.1:8787
 ```
 
+### Prebuilt image
+
+Every release publishes a multi-arch image to GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/aboyrbx/edupage-api:latest
+
+docker run -d --name edupage-api \
+  -p 8787:8787 \
+  -e ADMIN_PASSWORD='change-me' \
+  -v edupage-api-data:/app/data \
+  ghcr.io/aboyrbx/edupage-api:latest
+```
+
+Dashboard: <http://127.0.0.1:8787>. The named volume keeps the SQLite database and
+`credential.key`; **back it up**, otherwise the stored EduPage passwords are lost.
+
+### Build with Docker Compose
+
 With Docker:
 
 ```bash
