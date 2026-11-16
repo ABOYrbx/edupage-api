@@ -18,3 +18,12 @@ Eigenständiger Multi-Account-Gateway für EduPage, optimiert für KI-Agenten.
 - Fehler immer `{error, code}` mit kanonischem Vokabular (siehe core/errors.py).
 - Listen immer `{items, total, limit, offset}`.
 - Keys werden nur bei Erstellung im Klartext zurückgegeben.
+
+## Release
+- Tag `v*` pushen (z. B. `git tag -a v0.1.1 -m v0.1.1 && git push origin v0.1.1`).
+- `.github/workflows/release.yml` baut `linux/amd64` + `linux/arm64`, pusht nach
+  `ghcr.io/aboyrbx/edupage-api` und erstellt das GitHub-Release.
+- Image-Tags: `X.Y.Z`, `X.Y`, `latest`, `sha-<commit>`.
+- Vor dem Tag muss der Build lokal grün sein; der Workflow prüft zusätzlich
+  `/api/v1/health` im gestarteten Image.
+
