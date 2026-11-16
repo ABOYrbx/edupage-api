@@ -40,15 +40,16 @@ docker run -d --name edupage-api \
 Dashboard: <http://127.0.0.1:8787>. The named volume keeps the SQLite database and
 `credential.key`; **back it up**, otherwise the stored EduPage passwords are lost.
 
-### Build with Docker Compose
-
-With Docker:
+### With Docker Compose
 
 ```bash
 cp backend/.env.example .env           # optional; ADMIN_PASSWORD recommended
-docker compose up -d --build
+docker compose up -d                   # pulls ghcr.io/aboyrbx/edupage-api:latest
 docker compose logs app | grep Einmalpasswort   # only without ADMIN_PASSWORD
 ```
+
+Pin a release with `IMAGE_TAG=0.1.0 docker compose up -d`. To build from source instead,
+uncomment `build: .` in `docker-compose.yml` and run `docker compose up -d --build`.
 
 On first start the container creates `data/credential.key` and keeps it across restarts —
 **back this directory up**, otherwise the stored EduPage passwords are lost.

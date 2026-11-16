@@ -1,9 +1,11 @@
 services:
   app:
-    build: .
-    image: edupage-api:latest
+    # Released multi-arch image. Pin a version with IMAGE_TAG=0.1.0.
+    image: ghcr.io/aboyrbx/edupage-api:${IMAGE_TAG:-latest}
     container_name: edupage-api
     restart: unless-stopped
+    # Local development: uncomment to build from source instead of pulling.
+    # build: .
     # Optional: copy backend/.env.example to .env and fill it in.
     # Without a .env the container still starts and prints a one-time admin password.
     env_file:
@@ -23,6 +25,8 @@ services:
       - ./data:/app/data
 
   # Optional: Postgres instead of SQLite.
+  # The released image only ships the SQLite driver. Build a custom image with
+  # the "postgres" extra (pip install asyncpg) before enabling this service.
   # db:
   #   image: postgres:16-alpine
   #   restart: unless-stopped
